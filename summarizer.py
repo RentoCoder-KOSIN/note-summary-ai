@@ -149,6 +149,23 @@ def get_or_upload_file(file_path: str):
     return uploaded_file
 
 
+def _describe_empty_response(response) -> str:
+    """response.textがNoneだった場合に、原因を人間にわかる言葉にする"""
+    if not response.candidates:
+        return "AIから候補が1件も返ってきませんでした"
+
+    candidate = response.candidates[0]
+    finish_reason = str(getattr(candidate, "finish_reason", "")).split(".")[-1]
+
+    reasons = {
+        "SAFETY": "安全性フィルタによりブロックされました",
+        "RECITATION": "著作権上の理由でブロックされました(元の文章に近すぎる可能性)",
+        "MAX_TOKENS": "出力が長すぎて途中で打ち切られました(--detail simple を試すと改善する場合があります)",
+        "OTHER": "不明な理由で生成が停止しました",
+    }
+    return reasons.get(finish_reason, f"原因不明(finish_reason={finish_reason})")
+
+
 def summarize_note(file_path: str, detail: str = "normal") -> str:
     """講義ノートの画像/PDFを読み込んで要約を生成する"""
     client = get_client()
@@ -158,6 +175,11 @@ def summarize_note(file_path: str, detail: str = "normal") -> str:
         model=MODEL_NAME,
         contents=[prompt, uploaded_file],
     )
+
+    if response.text is None:
+        reason = _describe_empty_response(response)
+        raise RuntimeError(f"AIから有効な要約が得られませんでした: {reason}")
+
     return response.text
 
 
