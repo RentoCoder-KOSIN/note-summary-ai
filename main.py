@@ -18,6 +18,9 @@ from google import genai
 import argparse
 import sys
 import os
+import json
+import time
+import hashlib
 from datetime import datetime
 
 # --- 初期設定 ---
@@ -29,6 +32,66 @@ if not API_KEY:
 
 client = genai.Client(api_key=API_KEY)
 MODEL_NAME = "gemini-3-flash-preview"
+
+# --- アップロードキャッシュ設定 ---
+CACHE_FILE = ".upload_cache.json"
+# Geminiのアップロード済みファイルは一定時間後にサーバー側で自動削除される。
+# 正確な期限はAPI側の仕様変更もあり得るため、安全マージンを取って47時間で
+# ローカルキャッシュ側を先に失効させる。
+CACHE_TTL_SECONDS = 47 * 60 * 60
+
+
+def _load_cache() -> dict:
+    """ローカルのアップロードキャッシュを読み込む"""
+    if not os.path.exists(CACHE_FILE):
+        return {}
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_cache(cache: dict) -> None:
+    """ローカルのアップロードキャッシュを保存する"""
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2)
+
+
+def _file_cache_key(file_path: str) -> str:
+    """ファイルパス＋更新日時＋サイズからキャッシュキーを作る
+    (中身が変わったファイルを誤って同一視しないため)
+    """
+    stat = os.stat(file_path)
+    raw = f"{os.path.abspath(file_path)}:{stat.st_mtime}:{stat.st_size}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def get_or_upload_file(file_path: str):
+    """キャッシュが有効ならアップロード済みファイルを再利用し、
+    なければ新規にアップロードする
+    """
+    cache = _load_cache()
+    key = _file_cache_key(file_path)
+    entry = cache.get(key)
+
+    if entry and (time.time() - entry["uploaded_at"] < CACHE_TTL_SECONDS):
+        try:
+            existing = client.files.get(name=entry["name"])
+            print(f"  (キャッシュ済みファイルを再利用: {entry['name']})")
+            return existing
+        except Exception:
+            # サーバー側で見つからない(期限切れ等) → 再アップロードにフォールバック
+            print("  (キャッシュが無効だったため再アップロードします)")
+
+    print("  (ファイルをアップロード中...)")
+    uploaded_file = client.files.upload(file=file_path)
+    cache[key] = {
+        "name": uploaded_file.name,
+        "uploaded_at": time.time(),
+    }
+    _save_cache(cache)
+    return uploaded_file
 
 # --- 詳細度ごとの指示 ---
 DETAIL_INSTRUCTIONS = {
@@ -89,7 +152,7 @@ def build_prompt(detail: str) -> str:
 def summarize_note(file_path: str, detail: str = "normal") -> str:
     """講義ノートの画像/PDFを読み込んで要約を生成する"""
     prompt = build_prompt(detail)
-    uploaded_file = client.files.upload(file=file_path)
+    uploaded_file = get_or_upload_file(file_path)
     response = client.models.generate_content(
         model=MODEL_NAME,
         contents=[prompt, uploaded_file],
