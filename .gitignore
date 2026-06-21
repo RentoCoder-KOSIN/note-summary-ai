@@ -1,0 +1,42 @@
+# --- このプロジェクト固有 ---
+.env
+*.env
+summaries/          # 生成した要約ファイル(個人の講義ノート内容を含むため)
+*.jpg
+*.jpeg
+*.png
+!sample.jpg         # サンプル画像だけはコミットしたい場合は明示的に許可
+
+# --- API キー・秘密情報 ---
+*key*.txt
+secrets.py
+config_local.py
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- 仮想環境 ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- エディタ・OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- ログ・キャッシュ ---
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
