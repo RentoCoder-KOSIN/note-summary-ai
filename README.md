@@ -8,5 +8,5 @@ streamlit run app.py
 ```
 - CLI
 ```Linux:Linux
-python3 main.py filename --detail (simple, normal, detailed)
+python3 main.py filename --detail (simple, normal, detailed) --pdf
 ```
