@@ -9,10 +9,12 @@
 
 import os
 import tempfile
+import io
 
 import streamlit as st
 
 from summarizer import summarize_note, save_summary
+from pdf_export import markdown_summary_to_pdf
 
 DETAIL_LABELS = {"simple": "簡潔", "normal": "標準", "detailed": "詳細"}
 
@@ -64,11 +66,27 @@ if uploaded_file is not None:
             filepath = save_summary(summary, uploaded_file.name, detail)
             st.success(f"要約を生成しました（保存先: {filepath}）")
             st.markdown(summary)
-            st.download_button(
-                "Markdownをダウンロード",
-                data=summary,
-                file_name=os.path.basename(filepath),
-                mime="text/markdown",
-            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    "Markdownをダウンロード",
+                    data=summary,
+                    file_name=os.path.basename(filepath),
+                    mime="text/markdown",
+                )
+            with col2:
+                try:
+                    pdf_buffer = io.BytesIO()
+                    markdown_summary_to_pdf(summary, pdf_buffer)
+                    pdf_name = os.path.splitext(os.path.basename(filepath))[0] + ".pdf"
+                    st.download_button(
+                        "PDFをダウンロード",
+                        data=pdf_buffer.getvalue(),
+                        file_name=pdf_name,
+                        mime="application/pdf",
+                    )
+                except RuntimeError as e:
+                    st.warning(f"PDF生成をスキップしました: {e}")
         finally:
             os.remove(tmp_path)

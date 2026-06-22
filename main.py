@@ -17,7 +17,7 @@ import argparse
 import os
 import sys
 
-from summarizer import summarize_note, save_summary
+from summarizer import summarize_note, save_summary, save_summary_pdf
 
 
 def parse_args():
@@ -28,6 +28,11 @@ def parse_args():
         choices=["simple", "normal", "detailed"],
         default="normal",
         help="要約の詳細度 (デフォルト: normal)",
+    )
+    parser.add_argument(
+        "--pdf",
+        action="store_true",
+        help="Markdownに加えて、整形済みPDFも出力する",
     )
     return parser.parse_args()
 
@@ -47,8 +52,13 @@ def main():
         sys.exit(1)
 
     filepath = save_summary(summary, args.file_path, args.detail)
+    print(f"\n要約を保存しました: {filepath}")
 
-    print(f"\n要約を保存しました: {filepath}\n")
+    if args.pdf:
+        pdf_path = save_summary_pdf(summary, args.file_path, args.detail)
+        print(f"PDFを保存しました: {pdf_path}")
+
+    print()
     print("=" * 50)
     print(summary)
     print("=" * 50)

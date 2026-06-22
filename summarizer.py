@@ -12,6 +12,8 @@ import time
 import hashlib
 from datetime import datetime
 
+from pdf_export import markdown_summary_to_pdf
+
 MODEL_NAME = "gemini-3-flash-preview"
 CACHE_FILE = ".upload_cache.json"
 # Geminiのアップロード済みファイルは一定時間後にサーバー側で自動削除される。
@@ -191,4 +193,14 @@ def save_summary(summary: str, source_file: str, detail: str, output_dir: str = 
     filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}.md")
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(summary)
+    return filepath
+
+
+def save_summary_pdf(summary: str, source_file: str, detail: str, output_dir: str = "summaries") -> str:
+    """要約を整形済みPDFとして保存する"""
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_name = os.path.splitext(os.path.basename(source_file))[0]
+    filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}.pdf")
+    markdown_summary_to_pdf(summary, filepath)
     return filepath
