@@ -17,6 +17,7 @@ from summarizer import summarize_note, save_summary
 from pdf_export import markdown_summary_to_pdf
 
 DETAIL_LABELS = {"simple": "簡潔", "normal": "標準", "detailed": "詳細"}
+TERM_LEVEL_LABELS = {"beginner": "初心者向け", "has_background": "前提知識あり"}
 
 st.set_page_config(page_title="講義ノート要約AI", page_icon="📝")
 
@@ -36,13 +37,23 @@ uploaded_file = st.file_uploader(
     type=["jpg", "jpeg", "png", "pdf"],
 )
 
-detail = st.radio(
-    "要約の詳細度",
-    options=["simple", "normal", "detailed"],
-    format_func=lambda key: DETAIL_LABELS[key],
-    index=1,
-    horizontal=True,
-)
+col_detail, col_term = st.columns(2)
+with col_detail:
+    detail = st.radio(
+        "要約の詳細度",
+        options=["simple", "normal", "detailed"],
+        format_func=lambda key: DETAIL_LABELS[key],
+        index=1,
+        horizontal=True,
+    )
+with col_term:
+    term_level = st.radio(
+        "用語説明の粒度",
+        options=["beginner", "has_background"],
+        format_func=lambda key: TERM_LEVEL_LABELS[key],
+        index=0,
+        horizontal=True,
+    )
 
 if uploaded_file is not None:
     if uploaded_file.type.startswith("image"):
@@ -59,11 +70,11 @@ if uploaded_file is not None:
 
         try:
             with st.spinner("AIが解析中です..."):
-                summary = summarize_note(tmp_path, detail)
+                summary = summarize_note(tmp_path, detail, term_level)
         except Exception as e:
             st.error(f"エラーが発生しました: {e}")
         else:
-            filepath = save_summary(summary, uploaded_file.name, detail)
+            filepath = save_summary(summary, uploaded_file.name, detail, term_level)
             st.success(f"要約を生成しました（保存先: {filepath}）")
             st.markdown(summary)
 

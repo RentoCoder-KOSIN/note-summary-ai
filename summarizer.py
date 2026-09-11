@@ -66,6 +66,20 @@ DETAIL_INSTRUCTIONS = {
 """,
 }
 
+# --- 用語説明の粒度(読者の前提知識レベル) ---
+TERM_LEVEL_INSTRUCTIONS = {
+    "beginner": """
+用語粒度: 初心者向け
+- 専門用語は、その分野を全く知らない人にもわかるように噛み砕いて説明する
+- 抽象的な言葉を使う場合は、可能であれば具体例を1つ添える
+""",
+    "has_background": """
+用語粒度: 前提知識あり
+- 用語の意味そのものの説明は最小限にとどめ、「その用語が講義内でどう使われたか」という文脈情報を優先する
+- 既に知っていて当然の基礎用語は、説明を省略してよい
+""",
+}
+
 PROMPT_TEMPLATE = """
 この画像（またはPDF）は講義のノートまたは黒板の写真です。以下の手順で処理してください。
 
@@ -73,7 +87,17 @@ PROMPT_TEMPLATE = """
 2. 読み取った内容を、試験勉強に使える形に整理する
 3. 以下のMarkdown形式で出力する
 
+## 重要なポイントを選ぶ基準
+以下に当たる情報を優先的に拾ってください。単なる言い換えや装飾的な発言は拾わないこと。
+1. 定義・概念の説明
+2. 因果関係・条件分岐（「〜なら〜になる」等）
+3. 比較・対比構造
+4. 手順・アルゴリズムのステップ
+5. 試験で問われやすそうな具体的な数値・固有名詞・用語
+
 {detail_instruction}
+
+{term_level_instruction}
 
 ## 講義タイトル（推測できれば。不明なら「タイトル不明」）
 
@@ -86,6 +110,7 @@ PROMPT_TEMPLATE = """
 - 用語2: 説明
 
 ### まとめ
+「まとめ」は講義全体の流れ（何を目的に、どういう順序で進み、どこに落ち着いたか）を捉えて書くこと。個々のポイントの単純な繰り返しにしないこと。
 （詳細度の指示に従った文量で）
 
 読み取れない部分があれば「(判読不能)」と記載してください。
@@ -93,9 +118,12 @@ PROMPT_TEMPLATE = """
 """
 
 
-def build_prompt(detail: str) -> str:
-    """詳細度に応じたプロンプトを組み立てる"""
-    return PROMPT_TEMPLATE.format(detail_instruction=DETAIL_INSTRUCTIONS[detail])
+def build_prompt(detail: str, term_level: str = "beginner") -> str:
+    """詳細度・用語粒度に応じたプロンプトを組み立てる"""
+    return PROMPT_TEMPLATE.format(
+        detail_instruction=DETAIL_INSTRUCTIONS[detail],
+        term_level_instruction=TERM_LEVEL_INSTRUCTIONS[term_level],
+    )
 
 
 def _load_cache() -> dict:
@@ -168,10 +196,10 @@ def _describe_empty_response(response) -> str:
     return reasons.get(finish_reason, f"原因不明(finish_reason={finish_reason})")
 
 
-def summarize_note(file_path: str, detail: str = "normal") -> str:
+def summarize_note(file_path: str, detail: str = "normal", term_level: str = "beginner") -> str:
     """講義ノートの画像/PDFを読み込んで要約を生成する"""
     client = get_client()
-    prompt = build_prompt(detail)
+    prompt = build_prompt(detail, term_level)
     uploaded_file = get_or_upload_file(file_path)
     response = client.models.generate_content(
         model=MODEL_NAME,
@@ -185,22 +213,34 @@ def summarize_note(file_path: str, detail: str = "normal") -> str:
     return response.text
 
 
-def save_summary(summary: str, source_file: str, detail: str, output_dir: str = "summaries") -> str:
+def save_summary(
+    summary: str,
+    source_file: str,
+    detail: str,
+    term_level: str = "beginner",
+    output_dir: str = "summaries",
+) -> str:
     """要約をMarkdownファイルとして保存する"""
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_name = os.path.splitext(os.path.basename(source_file))[0]
-    filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}.md")
+    filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}_{term_level}.md")
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(summary)
     return filepath
 
 
-def save_summary_pdf(summary: str, source_file: str, detail: str, output_dir: str = "summaries") -> str:
+def save_summary_pdf(
+    summary: str,
+    source_file: str,
+    detail: str,
+    term_level: str = "beginner",
+    output_dir: str = "summaries",
+) -> str:
     """要約を整形済みPDFとして保存する"""
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_name = os.path.splitext(os.path.basename(source_file))[0]
-    filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}.pdf")
+    filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}_{term_level}.pdf")
     markdown_summary_to_pdf(summary, filepath)
     return filepath
