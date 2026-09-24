@@ -32,9 +32,11 @@ if not os.environ.get("GEMINI_API_KEY"):
     )
     st.stop()
 
-uploaded_file = st.file_uploader(
-    "ノートの画像またはPDFをアップロード",
+uploaded_files = st.file_uploader(
+    "ノートの画像またはPDFをアップロード(複数選択可)",
     type=["jpg", "jpeg", "png", "pdf"],
+    accept_multiple_files=True,
+    help="複数選ぶと、選んだ順に同じ講義のページとして1つの要約にまとめます。",
 )
 
 col_detail, col_term = st.columns(2)
@@ -55,26 +57,31 @@ with col_term:
         horizontal=True,
     )
 
-if uploaded_file is not None:
-    if uploaded_file.type.startswith("image"):
-        st.image(uploaded_file, width=300)
-    else:
-        st.info(f"📄 {uploaded_file.name}")
+if uploaded_files:
+    st.caption(f"{len(uploaded_files)}件のファイルを、表示順に1つの講義として要約します。")
+    for f in uploaded_files:
+        if f.type.startswith("image"):
+            st.image(f, width=300, caption=f.name)
+        else:
+            st.info(f"📄 {f.name}")
 
     if st.button("要約する", type="primary"):
         # Gemini APIへの渡し方上、ファイルパスが必要なので一時ファイルに保存する
-        suffix = os.path.splitext(uploaded_file.name)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(uploaded_file.getvalue())
-            tmp_path = tmp.name
-
+        tmp_paths = []
         try:
+            for f in uploaded_files:
+                suffix = os.path.splitext(f.name)[1]
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(f.getvalue())
+                    tmp_paths.append(tmp.name)
+
             with st.spinner("AIが解析中です..."):
-                summary = summarize_note(tmp_path, detail, term_level)
+                summary = summarize_note(tmp_paths, detail, term_level)
         except Exception as e:
             st.error(f"エラーが発生しました: {e}")
         else:
-            filepath = save_summary(summary, uploaded_file.name, detail, term_level)
+            source_names = [f.name for f in uploaded_files]
+            filepath = save_summary(summary, source_names, detail, term_level)
             st.success(f"要約を生成しました（保存先: {filepath}）")
             st.markdown(summary)
 
@@ -100,4 +107,6 @@ if uploaded_file is not None:
                 except RuntimeError as e:
                     st.warning(f"PDF生成をスキップしました: {e}")
         finally:
-            os.remove(tmp_path)
+            for path in tmp_paths:
+                if os.path.exists(path):
+                    os.remove(path)

@@ -46,23 +46,25 @@ def get_client() -> genai.Client:
 DETAIL_INSTRUCTIONS = {
     "simple": """
 詳細度: 簡潔（試験直前の見直し用）
-- 重要なポイントは3〜5個に絞り、1行で簡潔に書く（説明文は付けない）
-- キーワードは特に重要なものだけ、最大5個まで
-- まとめは1文だけ
-- 細かい背景説明や具体例は省略する
+- 重要なポイントはトピックごとに1〜2個に絞り、1行で簡潔に書く（説明文は付けない）
+- キーワードは特に重要なものだけ、トピックごとに最大3個程度
+- 細かい背景説明や具体例は省略する。ただし試験に出そうな数値・公式は残す
 """,
     "normal": """
 詳細度: 標準
-- 重要なポイントは5〜8個、各1〜2行で書く
-- キーワードは登場した専門用語を一通り、簡潔な説明付きで
-- まとめは2〜3文
+- 資料のトピック（スライド1〜3枚程度のまとまり）ごとに、重要なポイントを2〜4個、各1〜2行で書く
+- ポイントの総数に上限はない。資料が長ければ、その分多くなってよい
+- 数値・単位・公式・分類表は省略せず、値ごと書く
+- 例題・問題が載っていれば、問題文の要点と解答（式と答え）を書く
+- キーワードは登場した専門用語・略語をすべて、簡潔な説明付きで書く（略語は正式名称を併記）
 """,
     "detailed": """
 詳細度: 詳細（じっくり復習用）
-- 重要なポイントは漏れなく拾い、各ポイントに「なぜそうなるか」「背景・補足」も1〜2文加える
-- キーワードは関連する周辺知識も含めて説明する（その用語が出てくる文脈や、関連する別の用語があれば触れる）
-- 内容に応じて、具体例や図表の説明があれば言葉で描写する
-- まとめは4〜6文で、講義全体の流れがわかるように書く
+- 資料の全スライド・全ページを対象に、重要なポイントを漏れなく拾い、各ポイントに「なぜそうなるか」「背景・補足」も1〜2文加える
+- 数値・単位・公式・分類表は、すべて項目ごとに再現する
+- 例題・問題が載っていれば、問題文、解答（途中式を含む）、答えを書く
+- キーワードは登場した専門用語・略語をすべて拾い、関連する周辺知識も含めて説明する（略語は正式名称を併記。その用語が出てくる文脈や、関連する別の用語があれば触れる）
+- 図表・図解があれば、何が描かれているか、どこがポイントかを言葉で描写する
 """,
 }
 
@@ -81,11 +83,23 @@ TERM_LEVEL_INSTRUCTIONS = {
 }
 
 PROMPT_TEMPLATE = """
-この画像（またはPDF）は講義のノートまたは黒板の写真です。以下の手順で処理してください。
+あなたは、大学の講義ノートを試験勉強用に整理するアシスタントです。
+添付されたのは、講義の資料（ノート・黒板の写真・スライドのPDF）です（全{file_count}件）。
+複数ある場合、同じ講義の続きのこともあれば、別々の回・別々のテーマのこともあります。
+無理に1つのテーマへ統合せず、内容のまとまり（トピック）ごとに整理してください。
 
-1. 内容を正確に読み取る（手書き文字も含む）
-2. 読み取った内容を、試験勉強に使える形に整理する
-3. 以下のMarkdown形式で出力する
+## 手順
+1. すべてのファイルの内容を正確に読み取る（手書き文字も含む）
+2. ファイル間で重複している内容だけを1つにまとめる（各ファイルの内容を削って短くしない）
+3. 試験勉強に使える形に整理し、下の「出力形式」に従って出力する
+
+## 守ること
+- ノートに書かれていない内容を、推測や一般知識で付け足さない。補足が必要なときだけ「（補足）」と明記して書く
+- 読み取れない部分は「(判読不能)」と書き、推測で埋めない
+- 図・表・数式は、意味が伝わるように言葉や表記で再現する
+- 数値・単位・公式・表の中身・略語・固有名詞は省略せず、値まで書く（例:「カテゴリ5eは最大100MHz」のように具体値を残す）
+- 例題・問題が載っていれば解いて解答を付ける。解答が資料に書かれていない場合は「（解答例）」と明記する
+- 資料が長くても要約を短くまとめすぎない。すべてのファイル・ページを均等に拾い、後半を手薄にしない
 
 ## 重要なポイントを選ぶ基準
 以下に当たる情報を優先的に拾ってください。単なる言い換えや装飾的な発言は拾わないこと。
@@ -99,28 +113,32 @@ PROMPT_TEMPLATE = """
 
 {term_level_instruction}
 
-## 講義タイトル（推測できれば。不明なら「タイトル不明」）
+## 出力形式
+次の見出し構造のまま、Markdown本文のみを出力してください。
+前置き（「はい、要約します」等）や、全体を囲むコードブロックは不要です。
+
+## （講義タイトルだけを書く。複数テーマなら「／」でつなぐ。推測できなければ「タイトル不明」）
 
 ### 重要なポイント
+トピックごとに、トピック名を太字の行にして、その下に箇条書きを置く。
+
+**トピック名1**
 - ポイント1
 - ポイント2
+
+**トピック名2**
+- ポイント1
 
 ### キーワード・専門用語
 - 用語1: 説明
 - 用語2: 説明
-
-### まとめ
-「まとめ」は講義全体の流れ（何を目的に、どういう順序で進み、どこに落ち着いたか）を捉えて書くこと。個々のポイントの単純な繰り返しにしないこと。
-（詳細度の指示に従った文量で）
-
-読み取れない部分があれば「(判読不能)」と記載してください。
-余計な前置き（「はい、要約します」等）は不要です。Markdown本文のみ出力してください。
 """
 
 
-def build_prompt(detail: str, term_level: str = "beginner") -> str:
-    """詳細度・用語粒度に応じたプロンプトを組み立てる"""
+def build_prompt(detail: str, term_level: str = "beginner", file_count: int = 1) -> str:
+    """詳細度・用語粒度・ファイル数に応じたプロンプトを組み立てる"""
     return PROMPT_TEMPLATE.format(
+        file_count=file_count,
         detail_instruction=DETAIL_INSTRUCTIONS[detail],
         term_level_instruction=TERM_LEVEL_INSTRUCTIONS[term_level],
     )
@@ -196,14 +214,34 @@ def _describe_empty_response(response) -> str:
     return reasons.get(finish_reason, f"原因不明(finish_reason={finish_reason})")
 
 
-def summarize_note(file_path: str, detail: str = "normal", term_level: str = "beginner") -> str:
-    """講義ノートの画像/PDFを読み込んで要約を生成する"""
+def summarize_note(
+    file_paths: str | list[str],
+    detail: str = "normal",
+    term_level: str = "beginner",
+) -> str:
+    """講義ノートの画像/PDFを読み込んで要約を生成する
+
+    file_paths は1件(str)でも複数件(list)でもよい。
+    複数の場合は渡した順に同じ講義の続きとして読み、1つの要約に統合する。
+    """
+    if isinstance(file_paths, str):
+        file_paths = [file_paths]
+    if not file_paths:
+        raise ValueError("要約するファイルが指定されていません")
+
     client = get_client()
-    prompt = build_prompt(detail, term_level)
-    uploaded_file = get_or_upload_file(file_path)
+    prompt = build_prompt(detail, term_level, file_count=len(file_paths))
+
+    contents = [prompt]
+    for i, path in enumerate(file_paths, start=1):
+        uploaded_file = get_or_upload_file(path)
+        if len(file_paths) > 1:
+            contents.append(f"--- ファイル {i} / {len(file_paths)} ---")
+        contents.append(uploaded_file)
+
     response = client.models.generate_content(
         model=MODEL_NAME,
-        contents=[prompt, uploaded_file],
+        contents=contents,
     )
 
     if response.text is None:
@@ -213,9 +251,19 @@ def summarize_note(file_path: str, detail: str = "normal", term_level: str = "be
     return response.text
 
 
+def _source_base_name(source_file: str | list[str]) -> str:
+    """保存ファイル名に使う元ファイル名を作る(複数なら「先頭_他N件」)"""
+    if isinstance(source_file, str):
+        source_file = [source_file]
+    first = os.path.splitext(os.path.basename(source_file[0]))[0]
+    if len(source_file) > 1:
+        return f"{first}_他{len(source_file) - 1}件"
+    return first
+
+
 def save_summary(
     summary: str,
-    source_file: str,
+    source_file: str | list[str],
     detail: str,
     term_level: str = "beginner",
     output_dir: str = "summaries",
@@ -223,7 +271,7 @@ def save_summary(
     """要約をMarkdownファイルとして保存する"""
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = os.path.splitext(os.path.basename(source_file))[0]
+    base_name = _source_base_name(source_file)
     filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}_{term_level}.md")
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(summary)
@@ -232,7 +280,7 @@ def save_summary(
 
 def save_summary_pdf(
     summary: str,
-    source_file: str,
+    source_file: str | list[str],
     detail: str,
     term_level: str = "beginner",
     output_dir: str = "summaries",
@@ -240,7 +288,7 @@ def save_summary_pdf(
     """要約を整形済みPDFとして保存する"""
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = os.path.splitext(os.path.basename(source_file))[0]
+    base_name = _source_base_name(source_file)
     filepath = os.path.join(output_dir, f"{timestamp}_{base_name}_{detail}_{term_level}.pdf")
     markdown_summary_to_pdf(summary, filepath)
     return filepath
